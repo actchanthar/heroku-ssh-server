@@ -37,13 +37,11 @@ def start_server():
             chan.close()
 
 def start_ngrok():
-    ngrok.set_auth_token("2w4bYabT1dLCfLue2PhWGQgerbs_NTCtqFcpHQbNYABbxXAy")
-    tunnel = ngrok.connect(2222, "tcp", region="eu")
+    ngrok.set_auth_token("YOUR_NGROK_AUTH_TOKEN")
+    tunnel = ngrok.connect(2222, "tcp")  # Removed region="eu"
     print(f"ngrok tunnel created: {tunnel.public_url}")
 
 if __name__ == "__main__":
-    # Start ngrok in a separate thread
     ngrok_thread = threading.Thread(target=start_ngrok)
     ngrok_thread.start()
-    # Start the SSH server
     start_server()
