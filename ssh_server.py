@@ -37,7 +37,7 @@ def start_server():
             chan.close()
 
 def start_ngrok():
-    ngrok.set_auth_token("2w4FZOFPJW8Y5xLEK37wLHcGdPDG_3FRiWVRnqDNG6sD2mX3id")
+    ngrok.set_auth_token("2w4bYabT1dLCfLue2PhWGQgerbs_NTCtqFcpHQbNYABbxXAy")
     tunnel = ngrok.connect(2222, "tcp", region="eu")
     print(f"ngrok tunnel created: {tunnel.public_url}")
 
