@@ -2,8 +2,9 @@ import paramiko
 import socket
 import threading
 import os
+import asyncio
+import websockets
 from paramiko import RSAKey
-from pyngrok import ngrok
 
 host_key = RSAKey.generate(2048)
 
@@ -14,11 +15,11 @@ class SSHServer(paramiko.ServerInterface):
         return paramiko.OPEN_FAILED_ADMINISTRATIVELY_PROHIBITED
 
     def check_auth_password(self, username, password):
-        if username == os.getenv("SSH_USERNAME") and password == os.getenv("SSH_PASSWORD"):
+        if username == "user" and password == "securepassword123":
             return paramiko.AUTH_SUCCESSFUL
         return paramiko.AUTH_FAILED
 
-def start_server():
+def start_ssh_server():
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server_socket.bind(("0.0.0.0", 2222))
@@ -36,12 +37,46 @@ def start_server():
             print(f"Client connected: {addr}")
             chan.close()
 
-def start_ngrok():
-    ngrok.set_auth_token("2w4bYabT1dLCfLue2PhWGQgerbs_NTCtqFcpHQbNYABbxXAy")
-    tunnel = ngrok.connect(2222, "tcp")
-    print(f"ngrok tunnel created: {tunnel.public_url}")
+async def ssh_websocket_handler(websocket, path):
+    print("WebSocket client connected")
+    ssh_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        # Connect to the internal SSH server on port 2222
+        ssh_socket.connect(("localhost", 2222))
+        print("Connected to internal SSH server")
+
+        # Forward data between WebSocket and SSH socket
+        async def forward_ws_to_ssh():
+            while True:
+                data = await websocket.recv()
+                ssh_socket.sendall(data)
+
+        async def forward_ssh_to_ws():
+            while True:
+                data = ssh_socket.recv(1024)
+                if not data:
+                    break
+                await websocket.send(data)
+
+        # Run both forwarding tasks concurrently
+        await asyncio.gather(forward_ws_to_ssh(), forward_ssh_to_ws())
+
+    except Exception as e:
+        print(f"Error in WebSocket handler: {e}")
+    finally:
+        ssh_socket.close()
+
+def start_websocket_server():
+    port = int(os.getenv("PORT", 2222))  # Use Heroku's $PORT
+    print(f"Starting WebSocket server on port {port}")
+    start_server = websockets.serve(ssh_websocket_handler, "0.0.0.0", port)
+    asyncio.get_event_loop().run_until_complete(start_server)
+    asyncio.get_event_loop().run_forever()
 
 if __name__ == "__main__":
-    ngrok_thread = threading.Thread(target=start_ngrok)
-    ngrok_thread.start()
-    start_server()
+    # Start the SSH server in a separate thread
+    ssh_thread = threading.Thread(target=start_ssh_server)
+    ssh_thread.start()
+
+    # Start the WebSocket server in the main thread
+    start_websocket_server()
