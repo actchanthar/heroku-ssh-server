@@ -3,8 +3,8 @@ import socket
 import threading
 import os
 from paramiko import RSAKey
+from pyngrok import ngrok
 
-# Generate or load an RSA key for the SSH server
 host_key = RSAKey.generate(2048)
 
 class SSHServer(paramiko.ServerInterface):
@@ -14,7 +14,6 @@ class SSHServer(paramiko.ServerInterface):
         return paramiko.OPEN_FAILED_ADMINISTRATIVELY_PROHIBITED
 
     def check_auth_password(self, username, password):
-        # Set your username and password via Heroku environment variables
         if username == os.getenv("SSH_USERNAME") and password == os.getenv("SSH_PASSWORD"):
             return paramiko.AUTH_SUCCESSFUL
         return paramiko.AUTH_FAILED
@@ -22,7 +21,7 @@ class SSHServer(paramiko.ServerInterface):
 def start_server():
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server_socket.bind(("0.0.0.0", 2222))  # Use port 2222 (or any port Heroku allows)
+    server_socket.bind(("0.0.0.0", 2222))
     server_socket.listen(100)
 
     print("SSH server running on port 2222...")
@@ -37,5 +36,14 @@ def start_server():
             print(f"Client connected: {addr}")
             chan.close()
 
+def start_ngrok():
+    ngrok.set_auth_token("2w4FZOFPJW8Y5xLEK37wLHcGdPDG_3FRiWVRnqDNG6sD2mX3id")
+    tunnel = ngrok.connect(2222, "tcp", region="eu")
+    print(f"ngrok tunnel created: {tunnel.public_url}")
+
 if __name__ == "__main__":
+    # Start ngrok in a separate thread
+    ngrok_thread = threading.Thread(target=start_ngrok)
+    ngrok_thread.start()
+    # Start the SSH server
     start_server()
