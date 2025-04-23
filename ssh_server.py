@@ -3,7 +3,7 @@ import socket
 import threading
 import os
 import asyncio
-import websockets
+from aiohttp import web
 from paramiko import RSAKey
 
 host_key = RSAKey.generate(2048)
@@ -37,46 +37,49 @@ def start_ssh_server():
             print(f"Client connected: {addr}")
             chan.close()
 
-async def ssh_websocket_handler(websocket, path):
-    print("WebSocket client connected")
+async def handle_ssh_over_http(request):
+    # Create a WebSocket-like connection over HTTP
     ssh_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        # Connect to the internal SSH server on port 2222
         ssh_socket.connect(("localhost", 2222))
         print("Connected to internal SSH server")
 
-        # Forward data between WebSocket and SSH socket
-        async def forward_ws_to_ssh():
-            while True:
-                data = await websocket.recv()
-                ssh_socket.sendall(data)
+        # Read data from the HTTP request (stream the body)
+        data = await request.read()
+        ssh_socket.sendall(data)
 
-        async def forward_ssh_to_ws():
-            while True:
-                data = ssh_socket.recv(1024)
-                if not data:
-                    break
-                await websocket.send(data)
+        # Read response from SSH server and send it back as HTTP response
+        response_data = b""
+        while True:
+            chunk = ssh_socket.recv(1024)
+            if not chunk:
+                break
+            response_data += chunk
 
-        # Run both forwarding tasks concurrently
-        await asyncio.gather(forward_ws_to_ssh(), forward_ssh_to_ws())
+        return web.Response(body=response_data)
 
     except Exception as e:
-        print(f"Error in WebSocket handler: {e}")
+        print(f"Error in HTTP handler: {e}")
+        return web.Response(text=f"Error: {e}", status=500)
     finally:
         ssh_socket.close()
 
-def start_websocket_server():
+async def start_http_server():
     port = int(os.getenv("PORT", 2222))  # Use Heroku's $PORT
-    print(f"Starting WebSocket server on port {port}")
-    start_server = websockets.serve(ssh_websocket_handler, "0.0.0.0", port)
-    asyncio.get_event_loop().run_until_complete(start_server)
-    asyncio.get_event_loop().run_forever()
+    print(f"Starting HTTP server on port {port}")
+    app = web.Application()
+    app.router.add_route('*', '/ssh', handle_ssh_over_http)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
 
 if __name__ == "__main__":
     # Start the SSH server in a separate thread
     ssh_thread = threading.Thread(target=start_ssh_server)
     ssh_thread.start()
 
-    # Start the WebSocket server in the main thread
-    start_websocket_server()
+    # Start the HTTP server in the main thread
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(start_http_server())
+    loop.run_forever()
