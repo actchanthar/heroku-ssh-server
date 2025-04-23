@@ -38,17 +38,14 @@ def start_ssh_server():
             chan.close()
 
 async def handle_ssh_over_http(request):
-    # Create a WebSocket-like connection over HTTP
     ssh_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         ssh_socket.connect(("localhost", 2222))
         print("Connected to internal SSH server")
 
-        # Read data from the HTTP request (stream the body)
         data = await request.read()
         ssh_socket.sendall(data)
 
-        # Read response from SSH server and send it back as HTTP response
         response_data = b""
         while True:
             chunk = ssh_socket.recv(1024)
@@ -65,7 +62,7 @@ async def handle_ssh_over_http(request):
         ssh_socket.close()
 
 async def start_http_server():
-    port = int(os.getenv("PORT", 2222))  # Use Heroku's $PORT
+    port = int(os.getenv("PORT", 2222))
     print(f"Starting HTTP server on port {port}")
     app = web.Application()
     app.router.add_route('*', '/ssh', handle_ssh_over_http)
@@ -75,11 +72,11 @@ async def start_http_server():
     await site.start()
 
 if __name__ == "__main__":
-    # Start the SSH server in a separate thread
     ssh_thread = threading.Thread(target=start_ssh_server)
     ssh_thread.start()
 
-    # Start the HTTP server in the main thread
-    loop = asyncio.get_event_loop()
+    # Create a new event loop and run the HTTP server
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     loop.run_until_complete(start_http_server())
     loop.run_forever()
